@@ -1,0 +1,14 @@
+version: '3'
+services:
+
+  elasticsearch:
+    image: elasticsearch:2.4.6
+    ports:
+      - "9200:9200"
+    volumes:
+      - ./es_data:/usr/share/elasticsearch/data
+
+  kibana:
+    image: kibana:4.6
+    ports:
+      - "5601:5601"

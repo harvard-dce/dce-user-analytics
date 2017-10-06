@@ -1,0 +1,13 @@
+arrow==0.10.0
+boto3==1.4.7
+click==6.7
+pyhorn==0.8.1
+pyloggly==0.1.0
+python-dotenv==0.7.1
+requests[security]==2.18.4
+redis==2.10.6
+
+# Elasticsearch 2.x
+elasticsearch>=2,<3
+elasticsearch-dsl>=2,<3
+
