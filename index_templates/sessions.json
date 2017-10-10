@@ -99,7 +99,15 @@
             }
           }
         }
-      ]
+      ],
+      "properties": {
+        "city": {
+          "index": "not_analyzed"
+        },
+        "user_name": {
+          "index": "not_analyzed"
+        }
+      }
     }
   }
 }
