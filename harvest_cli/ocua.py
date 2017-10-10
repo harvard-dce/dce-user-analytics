@@ -1,15 +1,11 @@
 #!/usr/bin/env python
 
-import sys
 import json
 import boto3
 import click
 import arrow
 import redis
-import logging
-import pyloggly
 from os import getenv
-from os.path import dirname, join
 from pyhorn.endpoints.search import SearchEpisode
 
 import re
@@ -22,37 +18,17 @@ pyhorn.endpoints.search.SearchEndpoint._kwarg_map['episode']['includeDeleted'] =
 import time
 from botocore.exceptions import ClientError
 
-from dotenv import load_dotenv
-load_dotenv(join(dirname(__file__), '.env'))
+from harvest_cli import cli
 
 MAX_START_END_SPAN = getenv('MAX_START_END_SPAN')
 EPISODE_CACHE_EXPIRE = getenv('EPISODE_CACHE_EXPIRE', 1800) # default to 15m
 
-log_level = getenv('LOG_LEVEL', 'INFO')
-log = logging.getLogger('mh-user-action-harvester')
-log.setLevel(logging.getLevelName(log_level.upper()))
-console = logging.StreamHandler(stream=sys.stdout)
-console.setFormatter(logging.Formatter("%(name)s %(levelname)s %(message)s"))
-log.addHandler(console)
-
-LOGGLY_TOKEN = getenv('LOGGLY_TOKEN')
-LOGGLY_TAGS = getenv('LOGGLY_TAGS')
-if LOGGLY_TOKEN is not None:
-    log.addHandler(
-        pyloggly.LogglyHandler(
-            LOGGLY_TOKEN,
-            'logs-01.loggly.com',
-            tags=','.join(['mh-user-action-harvester', LOGGLY_TAGS])
-        )
-    )
+import logging
+logger = logging.getLogger()
 
 sqs = boto3.resource('sqs')
 s3 = boto3.resource('s3')
 r = redis.StrictRedis()
-
-@click.group()
-def cli():
-    pass
 
 @cli.command()
 @click.option('-s', '--start', help='YYYYMMDDHHmmss')
@@ -75,8 +51,8 @@ def cli():
               help='Harvest action from this many mintues ago')
 @click.option('--disable-start-end-span-check', is_flag=True,
               help="Don't abort on too-long start-end time spans")
-def harvest(start, end, wait, engage_host, user, password, output, queue_name,
-            batch_size, interval, disable_start_end_span_check):
+def useractions(start, end, wait, engage_host, user, password, output, queue_name,
+                 batch_size, interval, disable_start_end_span_check):
 
     # we rely on our own redis cache, so disable pyhorn's internal response caching
     mh = pyhorn.MHClient('http://' + engage_host, user, password,
@@ -96,15 +72,15 @@ def harvest(start, end, wait, engage_host, user, password, output, queue_name,
                 .replace(minutes=-interval) \
                 .format('YYYYMMDDHHmmss')
 
-    log.info("Fetching user actions from %s to %s", start, end)
+    logger.info("Fetching user actions from %s to %s", start, end)
 
     start_end_span = arrow.get(end, 'YYYYMMDDHHmmss') - arrow.get(start, 'YYYYMMDDHHmmss')
-    log.info("Start-End time span in seconds: %d", start_end_span.seconds,
+    logger.info("Start-End time span in seconds: %d", start_end_span.seconds,
              extra={'start_end_span_seconds': start_end_span.seconds})
 
     if MAX_START_END_SPAN is not None and not disable_start_end_span_check:
         if start_end_span.seconds > MAX_START_END_SPAN:
-            log.error("Start-End time span %d is larger than %d",
+            logger.error("Start-End time span %d is larger than %d",
                       start_end_span.seconds,
                       MAX_START_END_SPAN
                       )
@@ -128,16 +104,16 @@ def harvest(start, end, wait, engage_host, user, password, output, queue_name,
         try:
             actions = mh.user_actions(**req_params)
         except Exception, e:
-            log.error("API request failed: %s", str(e))
+            logger.error("API request failed: %s", str(e))
             raise
 
         if len(actions) == 0:
-            log.info("No more actions")
+            logger.info("No more actions")
             break
 
         batch_count += 1
         action_count += len(actions)
-        log.info("Batch %d: %d actions", batch_count, len(actions))
+        logger.info("Batch %d: %d actions", batch_count, len(actions))
 
         for action in actions:
             last_action = action
@@ -148,14 +124,14 @@ def harvest(start, end, wait, engage_host, user, password, output, queue_name,
                 else:
                     print json.dumps(rec)
             except Exception as e:
-                log.error("Exception during rec creation for %s: %s", action.id, str(e))
+                logger.error("Exception during rec creation for %s: %s", action.id, str(e))
                 fail_count += 1
                 continue
 
         time.sleep(wait)
         offset += batch_size
 
-    log.info("Total actions: %d, total batches: %d, total failed: %d",
+    logger.info("Total actions: %d, total batches: %d, total failed: %d",
              action_count, batch_count, fail_count,
              extra={
                  'actions': action_count,
@@ -169,9 +145,9 @@ def harvest(start, end, wait, engage_host, user, password, output, queue_name,
         else:
             last_action_ts = arrow.get(last_action.created).format('YYYYMMDDHHmmss')
         set_harvest_ts(last_action_ts_key, last_action_ts)
-        log.info("Setting last action timestamp to %s", last_action_ts)
+        logger.info("Setting last action timestamp to %s", last_action_ts)
     except Exception, e:
-        log.error("Failed setting last action timestamp: %s", str(e))
+        logger.error("Failed setting last action timestamp: %s", str(e))
 
 def create_action_rec(action):
 
@@ -209,7 +185,7 @@ def create_action_rec(action):
     rec['episode'] = {}
 
     if episode is None:
-        log.warn("Missing episode for action %s", action.id)
+        logger.warn("Missing episode for action %s", action.id)
     else:
         rec['episode'] = {
             'title': episode.mediapackage.title,
@@ -227,7 +203,7 @@ def create_action_rec(action):
                 'cdn': series[6:11]
             })
         except AttributeError:
-            log.warn("Missing series for episode %s", episode.id)
+            logger.warn("Missing series for episode %s", episode.id)
 
         try:
             rec['episode']['type'] = episode.dcType
@@ -244,7 +220,7 @@ def create_action_rec(action):
 def get_episode(action):
     cached_ep = r.get(action.mediapackageId)
     if cached_ep is not None:
-        log.debug("episode cache hit for %s", action.mediapackageId)
+        logger.debug("episode cache hit for %s", action.mediapackageId)
         episode_data = json.loads(cached_ep)
         episode_data['__from_cache'] = True
         # recreate the SearchEpisode obj using the current client
@@ -253,7 +229,7 @@ def get_episode(action):
         # gets our cached version
         action._property_stash['episode'] = episode
     else:
-        log.debug("episode cache miss for %s", action.mediapackageId)
+        logger.debug("episode cache miss for %s", action.mediapackageId)
         episode = action.episode
         r.setex(
             action.mediapackageId,
@@ -274,7 +250,7 @@ def get_episode(action):
               help='Matterhorn rest user', required=True)
 @click.option('-p', '--password', envvar='MATTERHORN_REST_PASS',
               help='Matterhorn rest password', required=True)
-@click.option('-e', '--es_host', envvar='ELASTICSEARCH_HOST',
+@click.option('-e', '--es_host', envvar='ES_HOST',
               help="Elasticsearch host:port", default='localhost:9200')
 @click.option('-i', '--es_index', envvar='EPISODE_INDEX_NAME', default='episodes',
               help="Name of the index for storing episode records")
@@ -308,11 +284,11 @@ def load_episodes(created_from_days_ago, admin_host, engage_host, user, password
 
         episodes = mh_engage.search_episodes(**request_params)
         if len(episodes) == 0:
-            log.info("no more episodes")
+            logger.info("no more episodes")
             break
 
         episode_count += len(episodes)
-        log.info("fetched %d total episodes", episode_count)
+        logger.info("fetched %d total episodes", episode_count)
 
         for ep in episodes:
             doc = {
@@ -333,17 +309,17 @@ def load_episodes(created_from_days_ago, admin_host, engage_host, user, password
                 })
             except AttributeError:
                 series = None
-                log.warn("Missing series for episode %s", ep.id)
+                logger.warn("Missing series for episode %s", ep.id)
 
             try:
                 doc['type'] = ep.dcType
             except AttributeError:
-                log.warn("Missing type for episode %s", ep.id)
+                logger.warn("Missing type for episode %s", ep.id)
 
             try:
                 doc['description'] = ep.dcDescription
             except AttributeError:
-                log.warn("Missing description for episode %s", ep.id)
+                logger.warn("Missing description for episode %s", ep.id)
 
             attachments = ep.mediapackage.attachments
             if isinstance(attachments, dict):
@@ -363,7 +339,7 @@ def load_episodes(created_from_days_ago, admin_host, engage_host, user, password
                     } for a in attachments if a['type'] == 'presentation/segment+preview']
 
                 except Exception, e:
-                    log.error("Failed to extract attachement info from episode %s: %s", ep.id, str(e))
+                    logger.error("Failed to extract attachement info from episode %s: %s", ep.id, str(e))
 
             try:
                 wfs = mh_admin.workflows(
@@ -397,9 +373,9 @@ def load_episodes(created_from_days_ago, admin_host, engage_host, user, password
                     pass
 
             except IndexError:
-                log.info("No matching or finished workflow found for %s: %s", ep.id, ep.mediapackage.title)
+                logger.info("No matching or finished workflow found for %s: %s", ep.id, ep.mediapackage.title)
             except Exception, e:
-                log.error("Failed extracting workflow data for episode %s: %s", ep.id, str(e))
+                logger.error("Failed extracting workflow data for episode %s: %s", ep.id, str(e))
 
             es.index(index=es_index,
                      doc_type='episode',
@@ -421,7 +397,7 @@ def get_harvest_ts(ts_key):
         obj = bucket.Object(ts_key).get()
         return obj['Body'].read()
     except ClientError:
-        log.debug("No %s value found", ts_key)
+        logger.debug("No %s value found", ts_key)
         return None
 
 def get_or_create_bucket():

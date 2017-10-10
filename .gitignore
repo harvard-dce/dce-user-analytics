@@ -63,3 +63,6 @@ target/
 
 # docker env
 docker/es_data/*
+
+# dotenv file
+.env
