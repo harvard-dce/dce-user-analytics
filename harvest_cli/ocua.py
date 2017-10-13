@@ -9,7 +9,6 @@ from os import getenv
 from pyhorn.endpoints.search import SearchEpisode
 
 import re
-from elasticsearch import Elasticsearch
 
 import pyhorn
 # force all calls to the episode search endpoint to use includeDeleted=true
@@ -19,12 +18,13 @@ import time
 from botocore.exceptions import ClientError
 
 from harvest_cli import cli
+from .utils import es_connection
 
 MAX_START_END_SPAN = getenv('MAX_START_END_SPAN')
 EPISODE_CACHE_EXPIRE = getenv('EPISODE_CACHE_EXPIRE', 1800) # default to 15m
 
 import logging
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 sqs = boto3.resource('sqs')
 s3 = boto3.resource('s3')
@@ -262,7 +262,7 @@ def load_episodes(created_from_days_ago, admin_host, engage_host, user, password
 
     mh_admin = pyhorn.MHClient('http://' + admin_host, user, password, timeout=30)
     mh_engage = pyhorn.MHClient('http://' + engage_host, user, password, timeout=30)
-    es = Elasticsearch([es_host])
+    es = es_connection(es_host)
 
     offset = 0
     episode_count = 0

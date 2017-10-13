@@ -5,13 +5,13 @@ import time
 import click
 import requests
 from datetime import timedelta, datetime
-from elasticsearch import Elasticsearch
 from elasticsearch.helpers import bulk as index_bulk
 
+from .utils import es_connection
 from harvest_cli import cli
 
 import logging
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 API_BASE_URL = "https://api.zoom.us/v1"
 
@@ -33,16 +33,8 @@ def yesterday(ctx, param, value):
               help="zoom api secret; defaults to $ZOOM_SECRET")
 def zoom(date, destination, es_host, key, secret):
 
-
     if destination == 'index':
-        try:
-            es = Elasticsearch([es_host])
-            assert es.info()
-        except Exception:
-            logger.error(
-                "Connection to Elasticsearch at %s failed", es_host
-            )
-            return
+        es = es_connection(es_host)
 
     try:
         meeting_data = get_sessions_from(date, key, secret)
@@ -70,13 +62,14 @@ def zoom(date, destination, es_host, key, secret):
                     click.echo(json.dumps(s))
 
     except OSError as e:
-        click.echo("Destination error: %s" % str(e))
+        logger.error("Destination error: %s" % str(e))
     except requests.HTTPError as e:
-        click.echo("Error making API request: %s" % str(e))
+        logger.error("Error making API request: %s" % str(e))
     except ZoomApiException as e:
-        click.echo("The API returned an error response: %s" % str(e))
+        logger.error("The API returned an error response: %s" % str(e))
     except KeyboardInterrupt:
-        click.echo("Quitting")
+        logger.info("Quitting")
+        raise click.Abort()
 
 
 class ZoomApiException(Exception):
@@ -86,10 +79,10 @@ class ZoomApiException(Exception):
 def fetch_records(report_url, params, listkey, countkey='total_records', wait=1):
     params = params.copy()
     records = []
-    click.echo("get %s" % report_url)
+    logger.debug("get %s" % report_url)
 
     while True:
-        click.echo("params %s" % str(params))
+        logger.debug("params %s" % str(params))
 
         r = requests.post(url=API_BASE_URL + report_url, data=params)
         r.raise_for_status()
@@ -100,6 +93,7 @@ def fetch_records(report_url, params, listkey, countkey='total_records', wait=1)
 
         records.extend([record for record in response[listkey]])
 
+        logger.debug("Fetched %d of %d total records", len(records), response[countkey])
         if len(records) >= response[countkey]:
             break
 
