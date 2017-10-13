@@ -26,7 +26,7 @@ EPISODE_CACHE_EXPIRE = getenv('EPISODE_CACHE_EXPIRE', 1800) # default to 15m
 import logging
 logger = logging.getLogger(__name__)
 
-sqs = boto3.resource('sqs')
+sqs = boto3.resource('sqs', region_name='us-east-1')
 s3 = boto3.resource('s3')
 r = redis.StrictRedis()
 
@@ -48,7 +48,7 @@ r = redis.StrictRedis()
 @click.option('-b', '--batch-size', default=1000,
               help='number of actions per request')
 @click.option('-i', '--interval', envvar='DEFAULT_INTERVAL', default=2,
-              help='Harvest action from this many mintues ago')
+              help='Harvest action from this many minutes ago')
 @click.option('--disable-start-end-span-check', is_flag=True,
               help="Don't abort on too-long start-end time spans")
 def useractions(start, end, wait, engage_host, user, password, output, queue_name,
