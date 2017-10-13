@@ -1,14 +1,13 @@
 
-import os
 import click
 from time import sleep
 import docker as dockerpy
 from subprocess import call
 from os.path import join, dirname
-from elasticsearch import Elasticsearch
 
 from harvest_cli import cli
 from .setup import load_index_templates
+from .utils import es_connection
 
 BASE_PATH = dirname(dirname(__file__))
 DOCKER_PATH = join(BASE_PATH, 'docker')
@@ -26,16 +25,20 @@ def init(ctx, es_host):
     ctx.invoke(up)
     ctx.invoke(install_kopf)
 
-    es = Elasticsearch([es_host])
+    retries = 10
     while True:
         try:
-            info = es.info()
+            es = es_connection(es_host)
             break
         except:
-            click.echo("waiting for elasticsearch to be available...")
-            sleep(.5)
+            if retries > 0:
+                retries -= 1
+                click.echo("waiting for elasticsearch to be available...")
+                sleep(1)
+            else:
+                raise
 
-    ctx.invoke(load_index_templates, es_host=os.getenv("ES_HOST"))
+    ctx.invoke(load_index_templates, es_host=es_host)
 
 
 @dev.command()
