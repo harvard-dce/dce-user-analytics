@@ -102,9 +102,11 @@
       ],
       "properties": {
         "city": {
+          "type": "string",
           "index": "not_analyzed"
         },
         "user_name": {
+          "type": "string",
           "index": "not_analyzed"
         }
       }
