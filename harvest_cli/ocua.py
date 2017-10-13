@@ -26,7 +26,7 @@ EPISODE_CACHE_EXPIRE = getenv('EPISODE_CACHE_EXPIRE', 1800) # default to 15m
 import logging
 logger = logging.getLogger(__name__)
 
-sqs = boto3.resource('sqs')
+sqs = boto3.resource('sqs', region_name='us-west-2')
 s3 = boto3.resource('s3')
 r = redis.StrictRedis()
 

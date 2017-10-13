@@ -18,6 +18,8 @@ API_BASE_URL = "https://api.zoom.us/v1"
 def yesterday(ctx, param, value):
     if value is None:
         return (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
+    else:
+        return value
 
 
 @cli.command()
@@ -89,7 +91,15 @@ def fetch_records(report_url, params, listkey, countkey='total_records', wait=1)
         response = r.json()
 
         if 'error' in response.keys():
-            raise ZoomApiException(response['error'])
+            error_code = response['error']['code']
+            error_message = response['error']['message']
+            if error_code == 3001:
+                logger.warning(
+                    "Returned error %s: %s, Call: %s, Params: %s" % (error_code, error_message, report_url, params)
+                )
+                break
+            else:
+                raise ZoomApiException(response['error'])
 
         records.extend([record for record in response[listkey]])
 
@@ -98,9 +108,6 @@ def fetch_records(report_url, params, listkey, countkey='total_records', wait=1)
             break
 
         time.sleep(wait)
-
-        if response['page_number'] >= response['page_count']:
-            break
 
         params['page_number'] += 1
 
@@ -193,7 +200,6 @@ def get_meetings(date, key, secret):
 def get_sessions_from(date, key, secret):
 
     url = "/metrics/meetingdetail"
-    participant_sessions = []
 
     params = {
         'api_key': key,
