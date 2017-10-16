@@ -18,7 +18,7 @@ import time
 from botocore.exceptions import ClientError
 
 from harvest_cli import cli
-from .utils import es_connection
+from .utils import es_connection, get_mpids_from_useractions
 
 MAX_START_END_SPAN = getenv('MAX_START_END_SPAN')
 EPISODE_CACHE_EXPIRE = getenv('EPISODE_CACHE_EXPIRE', 1800) # default to 15m
@@ -185,7 +185,7 @@ def create_action_rec(action):
     rec['episode'] = {}
 
     if episode is None:
-        logger.warn("Missing episode for action %s", action.id)
+        logger.warning("Missing episode for action %s", action.id)
     else:
         rec['episode'] = {
             'title': episode.mediapackage.title,
@@ -203,7 +203,7 @@ def create_action_rec(action):
                 'cdn': series[6:11]
             })
         except AttributeError:
-            logger.warn("Missing series for episode %s", episode.id)
+            logger.warning("Missing series for episode %s", episode.id)
 
         try:
             rec['episode']['type'] = episode.dcType
@@ -240,118 +240,111 @@ def get_episode(action):
 
 
 @cli.command()
-@click.option('-c', '--created_from_days_ago', type=int, default=1,
-              help='set createdFrom param to this many days ago')
-@click.option('-A', '--admin_host', envvar='MATTERHORN_ADMIN_HOST',
+@click.option('-A', '--admin-host', envvar='MATTERHORN_ADMIN_HOST',
               help="Matterhorn admin hostname", required=True)
-@click.option('-E', '--engage_host', envvar='MATTERHORN_ENGAGE_HOST',
+@click.option('-E', '--engage-host', envvar='MATTERHORN_ENGAGE_HOST',
               help="Matterhorn engage hostname", required=True)
 @click.option('-u', '--user', envvar='MATTERHORN_REST_USER',
               help='Matterhorn rest user', required=True)
 @click.option('-p', '--password', envvar='MATTERHORN_REST_PASS',
               help='Matterhorn rest password', required=True)
-@click.option('-e', '--es_host', envvar='ES_HOST',
+@click.option('-e', '--es-host', envvar='ES_HOST',
               help="Elasticsearch host:port", default='localhost:9200')
-@click.option('-i', '--es_index', envvar='EPISODE_INDEX_NAME', default='episodes',
+@click.option('-i', '--es-index', envvar='EPISODE_INDEX_NAME', default='episodes',
               help="Name of the index for storing episode records")
+@click.option('-n', '--index-pattern', default='useractions-*',
+              help="useraction index pattern to query for mpids")
+@click.option('--term', help="term query for mpids to index")
+@click.option('--year', help="year query for mpids to index")
 @click.option('--mpid', help="Index a specific mediapackage")
 @click.option('-w', '--wait', default=1,
               help="Seconds to wait between batch requests")
-def load_episodes(created_from_days_ago, admin_host, engage_host, user, password, es_host,
-                  es_index, mpid, wait):
+def load_episodes(admin_host, engage_host, user, password, es_host, es_index, index_pattern, mpid, term, year, wait):
 
-    mh_admin = pyhorn.MHClient('http://' + admin_host, user, password, timeout=30)
     mh_engage = pyhorn.MHClient('http://' + engage_host, user, password, timeout=30)
+    mh_admin = pyhorn.MHClient('http://' + admin_host, user, password, timeout=30)
     es = es_connection(es_host)
 
-    offset = 0
-    episode_count = 0
-    batch_size = 100
+    if mpid is not None:
+        mpids = [mpid]
+    else:
+        mpids = get_mpids_from_useractions(es, index_pattern, term, year)
 
-    while True:
+    for mpid in mpids:
         request_params = {
-            'offset': offset,
-            'limit': batch_size,
+            'id': mpid,
             'includeDeleted': True,
-            'sort': 'DATE_CREATED'
         }
 
-        if mpid is not None:
-            request_params['id'] = mpid
-        elif created_from_days_ago is not None:
-            request_params['createdFrom'] = arrow.now() \
-                .replace(days=-created_from_days_ago).format('YYYY-MM-DDTHH:mm:ss') + 'Z'
-
         episodes = mh_engage.search_episodes(**request_params)
-        if len(episodes) == 0:
-            logger.info("no more episodes")
-            break
 
-        episode_count += len(episodes)
-        logger.info("fetched %d total episodes", episode_count)
+        if len(episodes) > 1:
+            logger.warning("fetched > 1 episodes for mpid %s", mpid)
+            continue
+        else:
+            ep = episodes[0]
 
-        for ep in episodes:
-            doc = {
-                'title': ep.mediapackage.title,
-                'mpid': ep.mediapackage.id,
-                'duration': int(ep.mediapackage.duration),
-                'start': str(arrow.get(ep.mediapackage.start).to('utc'))
-            }
+        doc = {
+            'title': ep.mediapackage.title,
+            'mpid': ep.mediapackage.id,
+            'duration': int(ep.mediapackage.duration),
+            'start': str(arrow.get(ep.mediapackage.start).to('utc'))
+        }
 
+        try:
+            series = str(ep.mediapackage.series)
+            doc.update({
+                'course': ep.mediapackage.seriestitle,
+                'series': series,
+                'year': series[:4],
+                'term': series[4:6],
+                'crn': series[6:11]
+            })
+        except AttributeError:
+            logger.warning("Missing series for episode %s", ep.id)
+
+        try:
+            doc['type'] = ep.dcType
+        except AttributeError:
+            logger.warning("Missing type for episode %s", ep.id)
+
+        try:
+            doc['description'] = ep.dcDescription
+        except AttributeError:
+            logger.warning("Missing description for episode %s", ep.id)
+
+        attachments = ep.mediapackage.attachments
+        if isinstance(attachments, dict):
             try:
-                series = str(ep.mediapackage.series)
-                doc.update({
-                    'course': ep.mediapackage.seriestitle,
-                    'series': series,
-                    'year': series[:4],
-                    'term': series[4:6],
-                    'crn': series[6:11]
-                })
-            except AttributeError:
-                series = None
-                logger.warn("Missing series for episode %s", ep.id)
+                attachments = attachments['attachment']
 
-            try:
-                doc['type'] = ep.dcType
-            except AttributeError:
-                logger.warn("Missing type for episode %s", ep.id)
+                for preview_type in ['presenter', 'presentation']:
+                    try:
+                        preview = next(a for a in attachments if a['type'] == '%s/player+preview' % preview_type)
+                        doc['%s_still' % preview_type] = preview['url']
+                    except StopIteration:
+                        pass
 
-            try:
-                doc['description'] = ep.dcDescription
-            except AttributeError:
-                logger.warn("Missing description for episode %s", ep.id)
+                doc['slides'] = [{
+                    'img': a['url'],
+                    'time': re.search('time=([^;]+)', a['ref']).group(1)
+                } for a in attachments if a['type'] == 'presentation/segment+preview']
 
-            attachments = ep.mediapackage.attachments
-            if isinstance(attachments, dict):
-                try:
-                    attachments = attachments['attachment']
-
-                    for preview_type in ['presenter', 'presentation']:
-                        try:
-                            preview = next(a for a in attachments if a['type'] == '%s/player+preview' % preview_type)
-                            doc['%s_still' % preview_type] = preview['url']
-                        except StopIteration:
-                            pass
-
-                    doc['slides'] = [{
-                        'img': a['url'],
-                        'time': re.search('time=([^;]+)', a['ref']).group(1)
-                    } for a in attachments if a['type'] == 'presentation/segment+preview']
-
-                except Exception, e:
-                    logger.error("Failed to extract attachement info from episode %s: %s", ep.id, str(e))
+            except Exception, e:
+                logger.error("Failed to extract attachement info from episode %s: %s", ep.id, str(e))
 
             try:
                 wfs = mh_admin.workflows(
                     mp=ep.mediapackage.id,
                     state='SUCCEEDED',
                     workflowdefinition='DCE-archive-publish-external'
-                    )
+                )
 
-                if len(wfs) > 1:
-                    raise RuntimeError("Got > 1 workflow for mpid %s" % ep.mediapackage.id)
+                if len(wfs) == 0:
+                    raise RuntimeError("No workflow found for mpid %s" % ep.mediapackage.id)
                 else:
-                    wf = wfs[0]
+                    # take the most recent one; fyi sort args for workflow API lookups don't actually work
+                    wf = sorted(wfs, key=lambda x: int(x.id))[-1]
 
                 ops = wf.operations
 
@@ -379,12 +372,11 @@ def load_episodes(created_from_days_ago, admin_host, engage_host, user, password
 
             es.index(index=es_index,
                      doc_type='episode',
-                     id=ep.id,
+                     id=mpid,
                      body=doc
                      )
 
         time.sleep(wait)
-        offset += batch_size
 
 # s3 state bucket helpers
 def set_harvest_ts(ts_key, timestamp):

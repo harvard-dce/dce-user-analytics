@@ -15,7 +15,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from harvest_cli import cli
-from .utils import es_connection
+from .utils import es_connection, get_episodes_for_term, get_series_for_term
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ def export():
 @click.option('--year')
 def viewing_options(es_host, term, year):
     es = es_connection(es_host)
-    mps = get_mps(es, term, year, fields=['mpid'])
+    mps = get_episodes_for_term(es, term, year, fields=['mpid'])
 
     event_aggs = {
         "aggs": {
@@ -94,7 +94,7 @@ def viewing_options(es_host, term, year):
 @click.option('--live/--no-live', default=False)
 def attendance(es_host, term, year, chunk_interval, live):
     es = es_connection(es_host)
-    mps = get_mps(es, term, year, fields=['mpid', 'duration'])
+    mps = get_episodes_for_term(es, term, year, fields=['mpid', 'duration'])
 
     attendance_column = live and 'live_attendance' or 'vod_attendance'
     duration_attr = live and 'live_duration' or 'duration'
@@ -131,13 +131,17 @@ def attendance(es_host, term, year, chunk_interval, live):
         res = s.execute().to_dict()
         duration = getattr(mp, duration_attr, None)
 
-        if duration is None or duration == 0:
+        if duration is None:
             logger.warning(
-                "'%s' is missing or zero for mpid %s", duration_attr, mp.mpid
+                "'%s' is missing for mpid %s", duration_attr, mp.mpid
             )
             continue
 
         total_intervals = ceil((mp.duration / 1000) / chunk_interval)
+
+        if total_intervals == 0:
+            logger.warning("zero intervals for mpid %s", mp.mpid)
+            continue
 
         for huid in res['aggregations']['huid']['buckets']:
             interval_buckets = len(huid['inpoints']['buckets'])
@@ -161,7 +165,7 @@ def attendance(es_host, term, year, chunk_interval, live):
 def rollcall(es_host, banner, term, year):
     banner = Banner(banner)
     es = es_connection(es_host)
-    series = get_series(es, term, year)
+    series = get_series_for_term(es, term, year)
 
     writer = DictWriter(
         sys.stdout,
@@ -180,31 +184,6 @@ def rollcall(es_host, banner, term, year):
             person['series'] = series_id
             writer.writerow(person)
         sleep(1)
-
-
-
-def get_mps(es, term=None, year=None, fields=None):
-    s = Search(using=es, index='episodes')
-
-    if None not in (term, year):
-        s = s.filter(Q('term', term=term) & Q('term', year=year))
-
-    if fields is not None:
-        s = s.source(include=fields)
-
-    res = list(s.scan())
-    return res
-
-def get_series(es, term=None, year=None):
-    s = Search(using=es, index='episodes').extra(size=0)
-
-    if None not in (term, year):
-        s = s.filter(Q('term', term=term) & Q('term', year=year))
-
-    s.aggs.bucket('series', 'terms', field='series', size=0)
-
-    res = s.execute()
-    return [x['key'] for x in res.aggregations.series.buckets]
 
 
 class Banner(object):
