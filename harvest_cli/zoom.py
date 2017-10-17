@@ -37,6 +37,8 @@ def zoom(date, destination, es_host, key, secret):
 
     if destination == 'index':
         es = es_connection(es_host)
+        meetings_index = "meetings-" + date.replace("-", ".")
+        sessions_index = "sessions-" + date.replace("-", ".")
 
     try:
         meeting_data = get_sessions_from(date, key, secret)
@@ -44,14 +46,14 @@ def zoom(date, destination, es_host, key, secret):
         for meeting_doc, session_docs in meeting_data:
             if destination == 'index':
                 es.index(
-                    index="meetings",
+                    index=meetings_index,
                     doc_type="meeting",
                     body=meeting_doc,
                     id=meeting_doc['uuid']
                 )
                 session_actions = [
                     dict(
-                        _index='sessions',
+                        _index=sessions_index,
                         _type='session',
                         _id=s['meeting'] + s['user_id'],
                         **s

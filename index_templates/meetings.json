@@ -1,5 +1,5 @@
 {
-  "template": "meetings",
+  "template": "meetings-*",
   "mappings": {
     "meeting": {
       "_all": {
