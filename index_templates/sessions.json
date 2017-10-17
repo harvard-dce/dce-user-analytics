@@ -1,5 +1,5 @@
 {
-  "template": "sessions",
+  "template": "sessions-*",
   "mappings": {
     "session": {
       "_all": {
