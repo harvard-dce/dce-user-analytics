@@ -250,16 +250,13 @@ def get_episode(action):
               help='Matterhorn rest password', required=True)
 @click.option('-e', '--es-host', envvar='ES_HOST',
               help="Elasticsearch host:port", default='localhost:9200')
-@click.option('-i', '--es-index', envvar='EPISODE_INDEX_NAME', default='episodes',
-              help="Name of the index for storing episode records")
-@click.option('-n', '--index-pattern', default='useractions-*',
-              help="useraction index pattern to query for mpids")
-@click.option('--term', help="term query for mpids to index")
-@click.option('--year', help="year query for mpids to index")
+@click.option('-t', '--target-index', default="episodes",
+              help="name of index the episodes will be written to; defaults to 'episodes'")
+@click.option('-s', '--source-index-pattern', help=("useraction index pattern to query for mpids; "
+                "e.g. 'useractions*-2017.10.*'; defaults to yesterday's index"))
 @click.option('--mpid', help="Index a specific mediapackage")
-@click.option('-w', '--wait', default=1,
-              help="Seconds to wait between batch requests")
-def load_episodes(admin_host, engage_host, user, password, es_host, es_index, index_pattern, mpid, term, year, wait):
+@click.option('-w', '--wait', default=1, help="Seconds to wait between batch requests")
+def load_episodes(admin_host, engage_host, user, password, es_host, target_index, source_index_pattern, mpid, wait):
 
     mh_engage = pyhorn.MHClient('http://' + engage_host, user, password, timeout=30)
     mh_admin = pyhorn.MHClient('http://' + admin_host, user, password, timeout=30)
@@ -268,7 +265,9 @@ def load_episodes(admin_host, engage_host, user, password, es_host, es_index, in
     if mpid is not None:
         mpids = [mpid]
     else:
-        mpids = get_mpids_from_useractions(es, index_pattern, term, year)
+        if source_index_pattern is None:
+            source_index_pattern = "useractions*-%s" % arrow.now().replace(days=-1).format("YYYY.MM.DD")
+        mpids = get_mpids_from_useractions(es, source_index_pattern)
 
     for mpid in mpids:
         request_params = {
@@ -370,7 +369,7 @@ def load_episodes(admin_host, engage_host, user, password, es_host, es_index, in
             except Exception, e:
                 logger.error("Failed extracting workflow data for episode %s: %s", ep.id, str(e))
 
-            es.index(index=es_index,
+            es.index(index=target_index,
                      doc_type='episode',
                      id=mpid,
                      body=doc

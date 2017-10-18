@@ -1,5 +1,5 @@
 {
-  "template" : "episodes-*",
+  "template" : "episodes*",
   "mappings" : {
     "episode" : {
       "_all" : {"enabled" : false},
