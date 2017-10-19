@@ -1,7 +1,6 @@
 
 import click
 from time import sleep
-import docker as dockerpy
 from subprocess import call
 from os.path import join, dirname
 
@@ -16,6 +15,9 @@ DOCKER_COMPOSE_FILE = join(DOCKER_PATH, 'docker-compose.yml')
 
 @cli.group()
 def dev():
+    # put this here so that the docker package is only required if the user
+    # is executing dev subcommands
+    import docker as dockerpy
     pass
 
 @dev.command()
