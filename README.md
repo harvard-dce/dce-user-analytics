@@ -30,7 +30,7 @@ All operations are executed through the `harvest.py` cli. To list commands, subc
 
 #### Usage
 
-    Usage: harvest.py zoom [OPTIONS]
+    Usage: ./harvest.py zoom [OPTIONS]
 
     Options:
       --date TEXT                   fetch for date, e.g. YYYY-mm-dd; defaults to
@@ -62,7 +62,7 @@ The zoom api uses "meeting id" to refer to ids for both an individual instance o
 
 **`'type': 2`**
 
-When calling /metrics/meetings, you must specify meeting type: 1(live) or 2(past). Live meetings are meetings that are currently happening and do not have an end time or duration yet. All live meetings become past meetings so meetings.py only searches for past meetings.
+When calling /metrics/meetings, you must specify meeting type: 1(live) or 2(past). Live meetings are meetings that are currently happening and do not have an end time or duration yet. All live meetings become past meetings so zoom.py only searches for past meetings.
 
 _**More notes on meetings ids:**_
 
@@ -86,7 +86,7 @@ Each individual instance of a meeting participant entering and exiting a meeting
 
 #### API Calls
 
-meetings.py runs all these calls in order to generate meeting objects with topics and host ids and participant sessions documents
+zoom.py runs all these calls in order to generate meeting objects with topics and host ids and participant sessions documents
 
 | Call                       | Requires          | Returns |
 | -------------------------- |:-----------------:| :-------            |
