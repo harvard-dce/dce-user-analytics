@@ -15,9 +15,6 @@ DOCKER_COMPOSE_FILE = join(DOCKER_PATH, 'docker-compose.yml')
 
 @cli.group()
 def dev():
-    # put this here so that the docker package is only required if the user
-    # is executing dev subcommands
-    import docker as dockerpy
     pass
 
 @dev.command()
@@ -54,7 +51,10 @@ def up(compose_file):
 
 @dev.command()
 def install_kopf():
-
+    # put this here so that the docker package is only required if the user
+    # is executing this subcommand
+    import docker as dockerpy
+    
     # get the elasticsearch container
     docker_client = dockerpy.from_env()
     try:
