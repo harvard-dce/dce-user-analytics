@@ -6,6 +6,7 @@ import click
 import requests
 from datetime import timedelta, datetime
 from elasticsearch.helpers import bulk as index_bulk
+from geolocation import Geolocate
 
 from .utils import es_connection
 from harvest_cli import cli
@@ -14,6 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 API_BASE_URL = "https://api.zoom.us/v1"
+
 
 def yesterday(ctx, param, value):
     if value is None:
@@ -33,7 +35,9 @@ def yesterday(ctx, param, value):
               help="zoom api key; defaults to $ZOOM_KEY")
 @click.option("--secret", envvar="ZOOM_SECRET",
               help="zoom api secret; defaults to $ZOOM_SECRET")
-def zoom(date, destination, es_host, key, secret):
+@click.option("--geolite", envvar="GEOLITE_PATH",
+              help="filepath to geolite database; defaults to $GEOLITE_PATH")
+def zoom(date, destination, es_host, key, secret, geolite):
 
     if destination == 'index':
         es = es_connection(es_host)
@@ -42,8 +46,18 @@ def zoom(date, destination, es_host, key, secret):
 
     try:
         meeting_data = get_sessions_from(date, key, secret)
+        g = Geolocate(geolite)
+        count_meetings = 0
+        count_sessions = 0
 
         for meeting_doc, session_docs in meeting_data:
+
+            count_meetings += 1
+            count_sessions += len(session_docs)
+
+            for s in session_docs:
+                s["geoip"] = g.get(s["ip_address"])
+
             if destination == 'index':
                 es.index(
                     index=meetings_index,
@@ -64,6 +78,10 @@ def zoom(date, destination, es_host, key, secret):
                 click.echo(json.dumps(meeting_doc))
                 for s in session_docs:
                     click.echo(json.dumps(s))
+
+        logger.info("total zoom meetings: %d" % count_meetings)
+        logger.info("total zoom sessions: %d" % count_sessions)
+        g.close()
 
     except OSError as e:
         logger.error("Destination error: %s" % str(e))
@@ -247,7 +265,7 @@ def create_meeting_document(meeting, topic, host_id):
         "has_3rd_party_audio": meeting['has_3rd_party_audio'],
         "has_video": meeting['has_video'],
         "has_screen_share": meeting['has_screen_share'],
-        "recording": meeting['recording'],
+        "recording": meeting['recording']
     }
 
     return doc
