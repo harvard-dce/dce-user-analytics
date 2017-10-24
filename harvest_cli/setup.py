@@ -1,7 +1,6 @@
 
 import os
 import click
-import requests
 from os.path import join, dirname, splitext
 
 from harvest_cli import cli
