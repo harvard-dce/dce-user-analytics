@@ -6,7 +6,7 @@ import click
 import requests
 from datetime import timedelta, datetime
 from elasticsearch.helpers import bulk as index_bulk
-from geolocation import geolocate
+from geolocation import Geolocate
 
 from .utils import es_connection
 from harvest_cli import cli
@@ -45,9 +45,15 @@ def zoom(date, destination, es_host, key, secret, geolite):
         sessions_index = "sessions-" + date.replace("-", ".")
 
     try:
-        meeting_data = get_sessions_from(date, key, secret, geolite)
+        meeting_data = get_sessions_from(date, key, secret)
+
+        g = Geolocate(geolite)
 
         for meeting_doc, session_docs in meeting_data:
+
+            for s in session_docs:
+                s["geoip"] = g.get(s["ip_address"])
+
             if destination == 'index':
                 es.index(
                     index=meetings_index,
@@ -68,6 +74,8 @@ def zoom(date, destination, es_host, key, secret, geolite):
                 click.echo(json.dumps(meeting_doc))
                 for s in session_docs:
                     click.echo(json.dumps(s))
+
+        g.close()
 
     except OSError as e:
         logger.error("Destination error: %s" % str(e))
@@ -203,7 +211,7 @@ def get_meetings(date, key, secret):
         yield create_meeting_document(meeting, topic, host_id)
 
 
-def get_sessions_from(date, key, secret, geolite):
+def get_sessions_from(date, key, secret):
 
     url = "/metrics/meetingdetail"
 
@@ -222,7 +230,7 @@ def get_sessions_from(date, key, secret, geolite):
         sessions = fetch_records(url, params, 'participants',
                                  countkey='participants_count')
 
-        session_docs = [create_sessions_document(session, uuid, geolite)
+        session_docs = [create_sessions_document(session, uuid)
                         for session in sessions]
 
         time.sleep(1)
@@ -251,15 +259,13 @@ def create_meeting_document(meeting, topic, host_id):
         "has_3rd_party_audio": meeting['has_3rd_party_audio'],
         "has_video": meeting['has_video'],
         "has_screen_share": meeting['has_screen_share'],
-        "recording": meeting['recording'],
+        "recording": meeting['recording']
     }
 
     return doc
 
 
-def create_sessions_document(session, meeting_uuid, geolite):
-
-    ip = session['ip_address']
+def create_sessions_document(session, meeting_uuid):
 
     doc = {
         "meeting": meeting_uuid,
@@ -276,8 +282,7 @@ def create_sessions_document(session, meeting_uuid, geolite):
         "share_application": session['share_application'],  # bool
         "share_desktop": session['share_desktop'],  # bool
         "share_whiteboard": session['share_whiteboard'],  # bool
-        "recording": session['recording'],  # bool
-        "geoip": geolocate(ip, geolite)
+        "recording": session['recording']  # bool
     }
 
     return doc
