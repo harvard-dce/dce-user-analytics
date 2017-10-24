@@ -46,10 +46,14 @@ def zoom(date, destination, es_host, key, secret, geolite):
 
     try:
         meeting_data = get_sessions_from(date, key, secret)
-
         g = Geolocate(geolite)
+        count_meetings = 0
+        count_sessions = 0
 
         for meeting_doc, session_docs in meeting_data:
+
+            count_meetings += 1
+            count_sessions += len(session_docs)
 
             for s in session_docs:
                 s["geoip"] = g.get(s["ip_address"])
@@ -75,6 +79,8 @@ def zoom(date, destination, es_host, key, secret, geolite):
                 for s in session_docs:
                     click.echo(json.dumps(s))
 
+        logger.info("total zoom meetings: %d" % count_meetings)
+        logger.info("total zoom sessions: %d" % count_sessions)
         g.close()
 
     except OSError as e:
