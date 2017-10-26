@@ -3,6 +3,7 @@
 import json
 import time
 import click
+import arrow
 import requests
 from datetime import timedelta, datetime
 from elasticsearch.helpers import bulk as index_bulk
@@ -273,6 +274,17 @@ def create_meeting_document(meeting, topic, host_id):
 
 def create_sessions_document(session, meeting_uuid):
 
+    try:
+        j = arrow.get(session['join_time'])
+        l = arrow.get(session['leave_time'])
+        duration = (l - j).seconds
+    except Exception as e:
+        logger.warning(
+            "Failed duration calc for session '%s': %s",
+            session['id'], str(e)
+        )
+        duration = None
+
     doc = {
         "meeting": meeting_uuid,
         "id": session['id'],
@@ -285,6 +297,7 @@ def create_sessions_document(session, meeting_uuid):
         "network_type": session['network_type'],
         "join_time": session['join_time'],
         "leave_time": session['leave_time'],
+        "duration": duration,
         "share_application": session['share_application'],  # bool
         "share_desktop": session['share_desktop'],  # bool
         "share_whiteboard": session['share_whiteboard'],  # bool
@@ -297,12 +310,19 @@ def create_sessions_document(session, meeting_uuid):
 # convert duration from MM:SS or HH:MM:SS to seconds
 def to_seconds(duration):
     try:
-        dt = datetime.strptime(duration, "%H:%M:%S")
+        try:
+            dt = datetime.strptime(duration, "%H:%M:%S")
+        except ValueError:
+            dt = datetime.strptime(duration, "%M:%S")
+        delta = timedelta(hours=dt.hour, minutes=dt.minute, seconds=dt.second)
+
+        return int(delta.total_seconds())
     except ValueError:
-        dt = datetime.strptime(duration, "%M:%S")
-    delta = timedelta(hours=dt.hour, minutes=dt.minute, seconds=dt.second)
-
-    return int(delta.total_seconds())
-
+        import pytimeparse
+        logger.warning("Duration parsing failed on input '%s'; falling back to pytimeparse. ", duration)
+        duration = pytimeparse.parse(duration)
+        if duration is None:
+            logger.warning("Even the mighty pytimeparse failed!")
+        return duration
 
 
