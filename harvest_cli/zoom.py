@@ -22,7 +22,12 @@ def yesterday(ctx, param, value):
     if value is None:
         return (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
     else:
-        return value
+        try:
+            # validate command line date input
+            datetime.strptime(value, '%Y-%m-%d')
+            return value
+        except ValueError:
+            raise click.BadParameter('Date must be in the format YYYY-mm-dd')
 
 
 @cli.command()
@@ -47,7 +52,9 @@ def zoom(date, destination, es_host, key, secret, geolite):
 
     try:
         meeting_data = get_sessions_from(date, key, secret)
+
         g = Geolocate(geolite)
+
         count_meetings = 0
         count_sessions = 0
 
@@ -125,12 +132,12 @@ def fetch_records(report_url, params, listkey, countkey='total_records', wait=1)
         records.extend([record for record in response[listkey]])
 
         logger.debug("Fetched %d of %d total records", len(records), response[countkey])
-        if len(records) >= response[countkey]:
+
+        if len(records) >= response[countkey] or params['page_number'] >= response['page_count']:
             break
-
-        time.sleep(wait)
-
-        params['page_number'] += 1
+        else:
+            params['page_number'] += 1
+            time.sleep(wait)
 
     return records
 
@@ -248,31 +255,44 @@ def get_sessions_from(date, key, secret):
 def create_meeting_document(meeting, topic, host_id):
 
     doc = {
-        "uuid": meeting['uuid'],
         "meeting_series_id": meeting['id'],
         "topic": topic,
         "host": {
-            "host_id": host_id,
-            "name": meeting['host'],
-            "email": meeting['email'],
-            "user_type": meeting['user_type']
+            "host_id": host_id
         },
-        "start_time": meeting['start_time'],
-        "end_time": meeting['end_time'],
-        "duration": to_seconds(meeting['duration']),
-        "participant_sessions": meeting['participants'],  # not unique participants
-        "has_pstn": meeting['has_pstn'],
-        "has_voip": meeting['has_voip'],
-        "has_3rd_party_audio": meeting['has_3rd_party_audio'],
-        "has_video": meeting['has_video'],
-        "has_screen_share": meeting['has_screen_share'],
-        "recording": meeting['recording']
+        "duration": to_seconds(meeting['duration'])
     }
+
+    matching_keys = ['uuid', 'start_time', 'end_time', 'has_pstn', 'has_voip',
+                     'has_3rd_party_audio', 'has_video', 'has_screen_share', 'recording']
+
+    host_keys = ['host', 'email', 'user_type']
+
+    for key in matching_keys:
+        if key in meeting:
+            doc[key] = meeting[key]
+        else:
+            logger.warn("Key: %s not in meeting response, meeting_id: %s" % key, meeting['id'])
+
+    for key in host_keys:
+        if key in meeting:
+            doc['host'][key] = meeting[key]
+        else:
+            logger.warn("Key: %s not in meeting response, meeting_id: %s" % key, meeting['id'])
+
+    if 'participants' in meeting:
+        doc['participant_sessions'] = meeting['participants']
+    else:
+        logger.warn("Key: %s not in meeting response, meeting_id: %s" % key, meeting['id'])
 
     return doc
 
 
 def create_sessions_document(session, meeting_uuid):
+
+    doc = {
+        "meeting": meeting_uuid
+    }
 
     try:
         j = arrow.get(session['join_time'])
@@ -285,24 +305,23 @@ def create_sessions_document(session, meeting_uuid):
         )
         duration = None
 
-    doc = {
-        "meeting": meeting_uuid,
-        "id": session['id'],
-        "user_id": session['user_id'],
-        "user_name": session['user_name'],
-        "device": session['device'],
-        "ip_address": session['ip_address'],
-        "country": session['cn'],
-        "city": session['city'],
-        "network_type": session['network_type'],
-        "join_time": session['join_time'],
-        "leave_time": session['leave_time'],
-        "duration": duration,
-        "share_application": session['share_application'],  # bool
-        "share_desktop": session['share_desktop'],  # bool
-        "share_whiteboard": session['share_whiteboard'],  # bool
-        "recording": session['recording']  # bool
-    }
+    doc['duration'] = duration
+
+    # keys in zoom response and elasticsearch doc
+    matching_keys = ['id', 'user_id', 'user_name', 'device', 'ip_address', 'city', 'network_type',
+                     'join_time', 'leave_time', 'share_application', 'share_desktop', 'share_whiteboard',
+                     'recording']
+
+    for key in matching_keys:
+        if key in session:
+            doc[key] = session[key]
+        else:
+            logger.warn("Key: %s not in sessions response, meeting_id: %s" % (key, str(meeting_uuid)))
+
+    if 'cn' in session:
+        doc['country'] = session['cn']
+    else:
+        logger.warn("Key: %s not in sessions response, meeting_id: %s" % (key, str(meeting_uuid)))
 
     return doc
 
@@ -324,5 +343,4 @@ def to_seconds(duration):
         if duration is None:
             logger.warning("Even the mighty pytimeparse failed!")
         return duration
-
-
+    
