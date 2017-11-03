@@ -7,7 +7,8 @@ import arrow
 import redis
 from os import getenv
 from pyhorn.endpoints.search import SearchEpisode
-
+from geolocation import Geolocate
+import user_agents
 import re
 
 import pyhorn
@@ -51,8 +52,10 @@ r = redis.StrictRedis()
               help='Harvest action from this many minutes ago')
 @click.option('--disable-start-end-span-check', is_flag=True,
               help="Don't abort on too-long start-end time spans")
+@click.option("--geolite", envvar="GEOLITE_PATH",
+              help="filepath to geolite database; defaults to $GEOLITE_PATH")
 def useractions(start, end, wait, engage_host, user, password, output, queue_name,
-                 batch_size, interval, disable_start_end_span_check):
+                 batch_size, interval, disable_start_end_span_check, geolite):
 
     # we rely on our own redis cache, so disable pyhorn's internal response caching
     mh = pyhorn.MHClient('http://' + engage_host, user, password,
@@ -92,6 +95,12 @@ def useractions(start, end, wait, engage_host, user, password, output, queue_nam
     fail_count = 0
     last_action = None
 
+    try:
+        geolookup = Geolocate(geolite)
+    except IOError as e:
+        logger.error("Error when reading maxminddb file: %s" % str(e))
+        raise
+
     while True:
 
         req_params = {
@@ -119,6 +128,16 @@ def useractions(start, end, wait, engage_host, user, password, output, queue_nam
             last_action = action
             try:
                 rec = create_action_rec(action)
+
+                if geolookup is not None:
+                    rec['geoip'] = geolookup.get(rec['ip'])
+                else:
+                    logger.warn("Geoip data not saved for action %s" % action.id)
+
+                if 'useragent' in rec:
+                    rec['ua'] = parse_user_agent(rec['useragent'])
+                    del rec['useragent']
+
                 if output == 'sqs':
                     queue.send_message(MessageBody=json.dumps(rec))
                 else:
@@ -148,6 +167,7 @@ def useractions(start, end, wait, engage_host, user, password, output, queue_nam
         logger.info("Setting last action timestamp to %s", last_action_ts)
     except Exception, e:
         logger.error("Failed setting last action timestamp: %s", str(e))
+
 
 def create_action_rec(action):
 
@@ -216,6 +236,7 @@ def create_action_rec(action):
             pass
 
     return rec
+
 
 def get_episode(action):
     cached_ep = r.get(action.mediapackageId)
@@ -330,7 +351,7 @@ def load_episodes(admin_host, engage_host, user, password, es_host, target_index
                 } for a in attachments if a['type'] == 'presentation/segment+preview']
 
             except Exception, e:
-                logger.error("Failed to extract attachement info from episode %s: %s", ep.id, str(e))
+                logger.error("Failed to extract attachment info from episode %s: %s", ep.id, str(e))
 
             try:
                 wfs = mh_admin.workflows(
@@ -377,10 +398,12 @@ def load_episodes(admin_host, engage_host, user, password, es_host, target_index
 
         time.sleep(wait)
 
+
 # s3 state bucket helpers
 def set_harvest_ts(ts_key, timestamp):
     bucket = get_or_create_bucket()
     bucket.put_object(Key=ts_key, Body=timestamp)
+
 
 def get_harvest_ts(ts_key):
     bucket = get_or_create_bucket()
@@ -390,6 +413,7 @@ def get_harvest_ts(ts_key):
     except ClientError:
         logger.debug("No %s value found", ts_key)
         return None
+
 
 def get_or_create_bucket():
 
@@ -403,11 +427,31 @@ def get_or_create_bucket():
     except ClientError:
         return s3.create_bucket(Bucket=bucket_name)
 
+
 def get_or_create_queue(queue_name):
     try:
         return sqs.get_queue_by_name(QueueName=queue_name)
     except ClientError:
         return sqs.create_queue(QueueName=queue_name)
+
+
+def parse_user_agent(ua_text):
+    user_agent = user_agents.parse(ua_text)
+
+    output = {"name": user_agent.browser.family,
+              "os": user_agent.os.family + " " + user_agent.os.version_string,
+              "os_name": user_agent.os.family,
+              "device": user_agent.device.family}
+
+    os_attributes = ("os_major", "os_minor")
+    for i in range(min(len(user_agent.os.version), len(os_attributes))):
+        output[os_attributes[i]] = str(user_agent.os.version[i])
+
+    browser_attributes = ("major", "minor", "patch")
+    for i in range(min(len(user_agent.browser.version), len(browser_attributes))):
+        output[browser_attributes[i]] = str(user_agent.browser.version[i])
+
+    return output
 
 
 if __name__ == '__main__':

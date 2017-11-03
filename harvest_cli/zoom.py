@@ -283,7 +283,7 @@ def create_meeting_document(meeting, topic, host_id):
     if 'participants' in meeting:
         doc['participant_sessions'] = meeting['participants']
     else:
-        logger.warn("Key: %s not in meeting response, meeting_id: %s" % key, meeting['id'])
+        logger.warn("No participants in meeting response, meeting_id: %s" % meeting['id'])
 
     return doc
 
@@ -343,4 +343,3 @@ def to_seconds(duration):
         if duration is None:
             logger.warning("Even the mighty pytimeparse failed!")
         return duration
-    

@@ -21,7 +21,10 @@ class Geolocate:
             return self.__new_lookup(ip)
 
     def __open_reader(self):
-        self.__reader = maxminddb.open_database(self.__db)
+        try:
+            self.__reader = maxminddb.open_database(self.__db)
+        except IOError:
+            raise
 
     def __new_lookup(self, ip):
         ipdata = self.__reader.get(ip)
