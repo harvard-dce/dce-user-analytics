@@ -1,0 +1,18 @@
+six
+arrow
+boto3
+click
+pyhorn
+pyloggly
+python-dotenv
+requests[security]
+redis
+maxminddb
+pytimeparse
+user-agents
+
+# Elasticsearch 2.x
+elasticsearch>=2,<3
+elasticsearch-dsl>=2,<3
+elasticsearch-curator~=4.2.0
+

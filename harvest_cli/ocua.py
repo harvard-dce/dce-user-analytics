@@ -7,11 +7,12 @@ import arrow
 import redis
 from os import getenv
 from pyhorn.endpoints.search import SearchEpisode
-from geolocation import Geolocate
+from .geolocation import Geolocate
 import user_agents
 import re
 
 import pyhorn
+
 # force all calls to the episode search endpoint to use includeDeleted=true
 pyhorn.endpoints.search.SearchEndpoint._kwarg_map['episode']['includeDeleted'] = True
 
@@ -22,14 +23,16 @@ from harvest_cli import cli
 from .utils import es_connection, get_mpids_from_useractions
 
 MAX_START_END_SPAN = getenv('MAX_START_END_SPAN')
-EPISODE_CACHE_EXPIRE = getenv('EPISODE_CACHE_EXPIRE', 1800) # default to 15m
+EPISODE_CACHE_EXPIRE = getenv('EPISODE_CACHE_EXPIRE', 1800)  # default to 15m
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 sqs = boto3.resource('sqs', region_name='us-east-1')
 s3 = boto3.resource('s3')
 r = redis.StrictRedis()
+
 
 @cli.command()
 @click.option('-s', '--start', help='YYYYMMDDHHmmss')
@@ -55,8 +58,7 @@ r = redis.StrictRedis()
 @click.option("--geolite", envvar="GEOLITE_PATH",
               help="filepath to geolite database; defaults to $GEOLITE_PATH")
 def useractions(start, end, wait, engage_host, user, password, output, queue_name,
-                 batch_size, interval, disable_start_end_span_check, geolite):
-
+                batch_size, interval, disable_start_end_span_check, geolite):
     # we rely on our own redis cache, so disable pyhorn's internal response caching
     mh = pyhorn.MHClient('http://' + engage_host, user, password,
                          timeout=30, cache_enabled=False)
@@ -79,14 +81,14 @@ def useractions(start, end, wait, engage_host, user, password, output, queue_nam
 
     start_end_span = arrow.get(end, 'YYYYMMDDHHmmss') - arrow.get(start, 'YYYYMMDDHHmmss')
     logger.info("Start-End time span in seconds: %d", start_end_span.seconds,
-             extra={'start_end_span_seconds': start_end_span.seconds})
+                extra={'start_end_span_seconds': start_end_span.seconds})
 
     if MAX_START_END_SPAN is not None and not disable_start_end_span_check:
         if start_end_span.seconds > MAX_START_END_SPAN:
             logger.error("Start-End time span %d is larger than %d",
-                      start_end_span.seconds,
-                      MAX_START_END_SPAN
-                      )
+                         start_end_span.seconds,
+                         MAX_START_END_SPAN
+                         )
             raise click.Abort()
 
     offset = 0
@@ -112,7 +114,7 @@ def useractions(start, end, wait, engage_host, user, password, output, queue_nam
 
         try:
             actions = mh.user_actions(**req_params)
-        except Exception, e:
+        except Exception as e:
             logger.error("API request failed: %s", str(e))
             raise
 
@@ -132,7 +134,7 @@ def useractions(start, end, wait, engage_host, user, password, output, queue_nam
                 if geolookup is not None:
                     rec['geoip'] = geolookup.get(rec['ip'])
                 else:
-                    logger.warn("Geoip data not saved for action %s" % action.id)
+                    logger.warning("Geoip data not saved for action %s" % action.id)
 
                 if 'useragent' in rec:
                     rec['ua'] = parse_user_agent(rec['useragent'])
@@ -141,7 +143,7 @@ def useractions(start, end, wait, engage_host, user, password, output, queue_nam
                 if output == 'sqs':
                     queue.send_message(MessageBody=json.dumps(rec))
                 else:
-                    print json.dumps(rec)
+                    print(json.dumps(rec))
             except Exception as e:
                 logger.error("Exception during rec creation for %s: %s", action.id, str(e))
                 fail_count += 1
@@ -151,12 +153,12 @@ def useractions(start, end, wait, engage_host, user, password, output, queue_nam
         offset += batch_size
 
     logger.info("Total actions: %d, total batches: %d, total failed: %d",
-             action_count, batch_count, fail_count,
-             extra={
-                 'actions': action_count,
-                 'batches': batch_count,
-                 'failures': fail_count
-             })
+                action_count, batch_count, fail_count,
+                extra={
+                    'actions': action_count,
+                    'batches': batch_count,
+                    'failures': fail_count
+                })
 
     try:
         if action_count == 0:
@@ -165,12 +167,11 @@ def useractions(start, end, wait, engage_host, user, password, output, queue_nam
             last_action_ts = arrow.get(last_action.created).format('YYYYMMDDHHmmss')
         set_harvest_ts(last_action_ts_key, last_action_ts)
         logger.info("Setting last action timestamp to %s", last_action_ts)
-    except Exception, e:
+    except Exception as e:
         logger.error("Failed setting last action timestamp: %s", str(e))
 
 
 def create_action_rec(action):
-
     is_playing = False
     if action.isPlaying > 0:
         is_playing = True
@@ -274,11 +275,10 @@ def get_episode(action):
 @click.option('-t', '--target-index', default="episodes",
               help="name of index the episodes will be written to; defaults to 'episodes'")
 @click.option('-s', '--source-index-pattern', help=("useraction index pattern to query for mpids; "
-                "e.g. 'useractions*-2017.10.*'; defaults to yesterday's index"))
+                                                    "e.g. 'useractions*-2017.10.*'; defaults to yesterday's index"))
 @click.option('--mpid', help="Index a specific mediapackage")
 @click.option('-w', '--wait', default=1, help="Seconds to wait between batch requests")
 def load_episodes(admin_host, engage_host, user, password, es_host, target_index, source_index_pattern, mpid, wait):
-
     mh_engage = pyhorn.MHClient('http://' + engage_host, user, password, timeout=30)
     mh_admin = pyhorn.MHClient('http://' + admin_host, user, password, timeout=30)
     es = es_connection(es_host)
@@ -350,7 +350,7 @@ def load_episodes(admin_host, engage_host, user, password, es_host, target_index
                     'time': re.search('time=([^;]+)', a['ref']).group(1)
                 } for a in attachments if a['type'] == 'presentation/segment+preview']
 
-            except Exception, e:
+            except Exception as e:
                 logger.error("Failed to extract attachment info from episode %s: %s", ep.id, str(e))
 
             try:
@@ -387,7 +387,7 @@ def load_episodes(admin_host, engage_host, user, password, es_host, target_index
 
             except IndexError:
                 logger.info("No matching or finished workflow found for %s: %s", ep.id, ep.mediapackage.title)
-            except Exception, e:
+            except Exception as e:
                 logger.error("Failed extracting workflow data for episode %s: %s", ep.id, str(e))
 
             es.index(index=target_index,
@@ -416,7 +416,6 @@ def get_harvest_ts(ts_key):
 
 
 def get_or_create_bucket():
-
     bucket_name = getenv('S3_HARVEST_TS_BUCKET')
     if bucket_name is None:
         raise RuntimeError("No timestamp bucket specified!")

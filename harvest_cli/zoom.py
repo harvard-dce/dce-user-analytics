@@ -7,7 +7,7 @@ import arrow
 import requests
 from datetime import timedelta, datetime
 from elasticsearch.helpers import bulk as index_bulk
-from geolocation import Geolocate
+from .geolocation import Geolocate
 
 from .utils import es_connection
 from harvest_cli import cli
@@ -33,7 +33,7 @@ def yesterday(ctx, param, value):
 @cli.command()
 @click.option("--date", callback=yesterday,
               help="fetch for date, e.g. YYYY-mm-dd; defaults to yesterday.")
-@click.option("--destination", type=click.Choice(['index','stdout']),
+@click.option("--destination", type=click.Choice(['index', 'stdout']),
               help="defaults to 'index'", default="index")
 @click.option("--es_host", envvar="ES_HOST", default="localhost:9200",
               help="Elasticsearch host:port; defaults to $ES_HOST")
@@ -272,18 +272,18 @@ def create_meeting_document(meeting, topic, host_id):
         if key in meeting:
             doc[key] = meeting[key]
         else:
-            logger.warn("Key: %s not in meeting response, meeting_id: %s" % key, meeting['id'])
+            logger.warning("Key: %s not in meeting response, meeting_id: %s" % key, meeting['id'])
 
     for key in host_keys:
         if key in meeting:
             doc['host'][key] = meeting[key]
         else:
-            logger.warn("Key: %s not in meeting response, meeting_id: %s" % key, meeting['id'])
+            logger.warning("Key: %s not in meeting response, meeting_id: %s" % key, meeting['id'])
 
     if 'participants' in meeting:
         doc['participant_sessions'] = meeting['participants']
     else:
-        logger.warn("No participants in meeting response, meeting_id: %s" % meeting['id'])
+        logger.warning("No participants in meeting response, meeting_id: %s" % meeting['id'])
 
     return doc
 
@@ -316,12 +316,12 @@ def create_sessions_document(session, meeting_uuid):
         if key in session:
             doc[key] = session[key]
         else:
-            logger.warn("Key: %s not in sessions response, meeting_id: %s" % (key, str(meeting_uuid)))
+            logger.warning("Key: %s not in sessions response, meeting_id: %s" % (key, str(meeting_uuid)))
 
     if 'cn' in session:
         doc['country'] = session['cn']
     else:
-        logger.warn("Key: %s not in sessions response, meeting_id: %s" % (key, str(meeting_uuid)))
+        logger.warning("Key: %s not in sessions response, meeting_id: %s" % (key, str(meeting_uuid)))
 
     return doc
 

@@ -1,4 +1,3 @@
-
 import click
 from time import sleep
 from subprocess import call
@@ -16,6 +15,7 @@ DOCKER_COMPOSE_FILE = join(DOCKER_PATH, 'docker-compose.yml')
 @cli.group()
 def dev():
     pass
+
 
 @dev.command()
 @click.option('--es-host', envvar="ES_HOST")
@@ -43,7 +43,6 @@ def init(ctx, es_host):
 @dev.command()
 @click.option('--compose-file', default=DOCKER_COMPOSE_FILE)
 def up(compose_file):
-
     click.echo("Running docker-compose up")
     cmdline = ['docker-compose', '-f', compose_file, 'up', '-d']
     call(cmdline)
@@ -54,7 +53,7 @@ def install_kopf():
     # put this here so that the docker package is only required if the user
     # is executing this subcommand
     import docker as dockerpy
-    
+
     # get the elasticsearch container
     docker_client = dockerpy.from_env()
     try:
@@ -73,8 +72,6 @@ def install_kopf():
 @dev.command()
 @click.option('--compose-file', default=DOCKER_COMPOSE_FILE)
 def down(compose_file):
-
     click.echo("Running docker-compose down")
     cmdline = ['docker-compose', '-f', compose_file, 'down']
     call(cmdline)
-

@@ -7,11 +7,12 @@ Deployment of these scripts is implemented by the [install-ua-harvester](https:/
 
 ## Getting Started
 
-**Note:** Python 2.7 is required; Python 3 not yet supported :(
+**Note:** Both python 2 & 3 should work
 
 1. Clone the project repo:
 1. Create and activate a python virtualenv
-1. `pip install -r requirements.txt`
+1. install pip-tools via `pip install pip-tools`
+1. run `pip-sync requirements.txt dev_requirements.txt` to install the python dependencies
 1. Copy `example.env` to `.env` and fill in appropriate values
 
 ## Usage

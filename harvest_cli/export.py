@@ -1,6 +1,5 @@
-
+import six
 import sys
-import json
 import click
 import logging
 import requests
@@ -8,10 +7,15 @@ import itertools
 from time import sleep
 from math import ceil
 from csv import DictWriter
-from urlparse import urljoin
 from elasticsearch_dsl import Search, Q
 
+if six.PY2:
+    from urlparse import urljoin
+else:
+    from urllib.parse import urljoin
+
 import urllib3
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from harvest_cli import cli
@@ -19,9 +23,11 @@ from .utils import es_connection, get_episodes_for_term, get_series_for_term
 
 logger = logging.getLogger(__name__)
 
+
 @cli.group()
 def export():
     pass
+
 
 @export.command()
 @click.option("--es_host", envvar="ES_HOST")
