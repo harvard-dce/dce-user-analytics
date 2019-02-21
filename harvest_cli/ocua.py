@@ -51,8 +51,12 @@ r = redis.StrictRedis()
               help='Harvest action from this many minutes ago')
 @click.option('--disable-start-end-span-check', is_flag=True,
               help="Don't abort on too-long start-end time spans")
+@click.option('--update-last-ts/--no-update-last-ts', is_flag=True,
+              default=True, help="Update the last harvested timestamp; "
+                   "use --no-update-last-ts if backfilling data")
 def useractions(start, end, wait, engage_host, user, password, output, queue_name,
-                 batch_size, interval, disable_start_end_span_check):
+                batch_size, interval, disable_start_end_span_check,
+                update_last_ts):
 
     # we rely on our own redis cache, so disable pyhorn's internal response caching
     mh = pyhorn.MHClient('http://' + engage_host, user, password,
@@ -139,15 +143,16 @@ def useractions(start, end, wait, engage_host, user, password, output, queue_nam
                  'failures': fail_count
              })
 
-    try:
-        if action_count == 0:
-            last_action_ts = end
-        else:
-            last_action_ts = arrow.get(last_action.created).format('YYYYMMDDHHmmss')
-        set_harvest_ts(last_action_ts_key, last_action_ts)
-        logger.info("Setting last action timestamp to %s", last_action_ts)
-    except Exception, e:
-        logger.error("Failed setting last action timestamp: %s", str(e))
+    if update_last_ts:
+        try:
+            if action_count == 0:
+                last_action_ts = end
+            else:
+                last_action_ts = arrow.get(last_action.created).format('YYYYMMDDHHmmss')
+            set_harvest_ts(last_action_ts_key, last_action_ts)
+            logger.info("Setting last action timestamp to %s", last_action_ts)
+        except Exception, e:
+            logger.error("Failed setting last action timestamp: %s", str(e))
 
 def create_action_rec(action):
 
@@ -190,8 +195,17 @@ def create_action_rec(action):
         rec['episode'] = {
             'title': episode.mediapackage.title,
             'duration': int(episode.mediapackage.duration),
-            'start': episode.mediapackage.start
         }
+        if hasattr(episode.mediapackage, 'start'):
+            rec['start'] = episode.mediapackage.start
+        elif hasattr(episode, 'dcCreated'):
+            dc_created = arrow.get(episode.dcCreated)
+            # format the same way the "start" would be
+            rec['start'] = dc_created.to('UTC') \
+                               .format('YYYY-MM-DDTHH:mm:ss') + 'Z'
+        else:
+            logger.warn("Episode missing both 'start' and 'dcCreated' for "
+                        "action %s", action.id)
 
         try:
             series = str(episode.mediapackage.series)

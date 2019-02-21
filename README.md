@@ -45,6 +45,9 @@ This script is designed in part with the assumption that it will be installed as
       -b, --batch-size INTEGER        number of actions per request
       -i, --interval INTEGER          Harvest action from this many minutes ago
       --disable-start-end-span-check  Don't abort on too-long start-end time spans
+      --update-last-ts /              True by default. The harvester will update the state it keeps to know where
+        --no-update-last-ts           in the oc_user_action table to start fetching from on the next run.
+                                      Use --no-update-last-ts if backfilling past events.
       --help                          Show this message and exit.
 
 This command fetches batches of useraction events based on a `--start` and `--end` timestamp. If a start/end is not specified the script will look for and use the timestamp of the last useraction fetched (stored in an S3 bucket; see settings below) as the start value and `now()` as the end value. If no timestamp is stored in S3 the default is to fetch the last `--interval` minutes of events (defaults to 2 minutes). Events are fetched in batches of `--batch-size` (default 1000) using the API endpoint's `limit` and `offset` parameters. Events are output to an SQS queue identified with `--queue-name`. If `--queue-name` is `"-"` the json data will be sent to stdout.
