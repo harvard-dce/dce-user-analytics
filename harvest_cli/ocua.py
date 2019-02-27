@@ -197,11 +197,11 @@ def create_action_rec(action):
             'duration': int(episode.mediapackage.duration),
         }
         if hasattr(episode.mediapackage, 'start'):
-            rec['start'] = episode.mediapackage.start
+            rec['episode']['start'] = episode.mediapackage.start
         elif hasattr(episode, 'dcCreated'):
             dc_created = arrow.get(episode.dcCreated)
             # format the same way the "start" would be
-            rec['start'] = dc_created.to('UTC') \
+            rec['episode']['start'] = dc_created.to('UTC') \
                                .format('YYYY-MM-DDTHH:mm:ss') + 'Z'
         else:
             logger.warn("Episode missing both 'start' and 'dcCreated' for "
