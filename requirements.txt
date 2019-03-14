@@ -13,3 +13,7 @@ pytimeparse==1.1.7
 elasticsearch>=2,<3
 elasticsearch-dsl>=2,<3
 
+# kinesis push
+pycrypto
+requests_futures
+

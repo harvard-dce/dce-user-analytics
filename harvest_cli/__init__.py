@@ -1,6 +1,7 @@
 
 import click
 import logging
+import utils
 logging.basicConfig()
 
 click.disable_unicode_literals_warning = True
@@ -22,3 +23,4 @@ from .setup import setup
 from .dev import dev
 from .ocua import useractions, load_episodes
 from .export import export
+from .kinesis import kinesis
