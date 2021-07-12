@@ -1,6 +1,6 @@
 # dce-user-analytics
 
-The project contains tools for dealing with DCE user analytics data. It is comprised mainly 
+The project contains tools for dealing with DCE user analytics data. It is comprised mainly
 of harvesting scripts that pull data from DCE's Opencast system and the Zoom Web Conferencing API.
 
 Deployment of these scripts is implemented by the [install-ua-harvester](https://github.com/harvard-dce/mh-opsworks-recipes/blob/master/recipes/install-ua-harvester.rb) recipe in [harvard-dce/mh-opsworks-recipes](https://github.com/harvard-dce/mh-opsworks-recipes).
@@ -23,7 +23,7 @@ All operations are executed through the `harvest.py` cli. To list commands, subc
     ./harvest.py [subgroup] [subcommand] --help
 
 ---
-    
+
 ## Opencast useractions
 
 A command for fetching useraction events and related metadata from Opencast. The program uses the [pyhorn](https://github.com/harvard-dce/pyhorn) library for interacting with the Opencast API. Harvested useractions are fed to an SQS queue.
@@ -31,7 +31,7 @@ A command for fetching useraction events and related metadata from Opencast. The
 This script is designed in part with the assumption that it will be installed as part of an `mh-opsworks` analytics node, but independent installation/testing is also possible. Just follow these steps:
 
     Usage: harvest.py useractions [OPTIONS]
-    
+
     Options:
       -s, --start TEXT                YYYYMMDDHHmmss
       -e, --end TEXT                  YYYYMMDDHHmmss; default=now
@@ -77,7 +77,7 @@ If the above situation arises there are two courses of action:
 ## Episode index
 
     Usage: harvest.py load_episodes [OPTIONS]
-    
+
     Options:
       -A, --admin-host TEXT           Matterhorn admin hostname  [required]
       -E, --engage-host TEXT          Matterhorn engage hostname  [required]
@@ -193,7 +193,7 @@ To execute the `load_episode` command you will also need to include hostname of 
     ...
     MATTERHORN_ADMIN_HOST=admin.matterhorn.example.edu
     ES_HOST=localhost:9200
-    
+
 For the `zoom` command the `ZOOM_API` and `ZOOM_SECRET` settings are also required.
 
 #### MATTERHORN_REST_USER / MATTERHORN_REST_PASS
@@ -207,12 +207,6 @@ IP or hostname of the admin node.
 
 #### DEFAULT_INTERVAL
 If no `--start` is provided and no last action timestamp is found in s3 the useraction harvest start will be calculated as this many minutes ago.
-
-#### LOGGLY_TOKEN
-If present the script will send log events to loggly.
-
-#### LOGGLY_TAGS
-Any extra tags to attach to events sent to loggly.
 
 #### S3_HARVEST_TS_BUCKET
 Name of the S3 bucket to store the last action's timestamp value. The program will attempt to create the bucket if it does not exist.
@@ -239,7 +233,7 @@ The key/secret combo for accessing the zoom api
 ## Development Environment
 
 A local development environment will need at least an instance of elasticsearch into which the zoom data can be indexed and inspected.
-The easiest way to get a test instance of Elasticsearch running is via docker & docker-compose. 
+The easiest way to get a test instance of Elasticsearch running is via docker & docker-compose.
 
 #### Development Setup
 

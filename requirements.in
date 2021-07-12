@@ -1,0 +1,19 @@
+# python 3.4 support dropped in v0.14
+arrow<0.14
+urllib3<1.25
+boto3<1.16
+click<=7.2
+# pre-emptively install an older version of this pyhorn dependency
+# that is still compatible with python 3.4
+requests-cache==0.5.2
+pyhorn
+python-dotenv
+requests
+requests[security]
+redis<3.4
+maxminddb>1.5,<1.6
+pytimeparse
+
+# Elasticsearch 2.x
+elasticsearch>=2,<3
+elasticsearch-dsl>=2,<3
