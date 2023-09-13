@@ -5,6 +5,10 @@ services:
     image: elasticsearch:2.4.6
     ports:
       - "9200:9200"
+    ulimits:
+      nofile:
+        soft: "65536"
+        hard: "65536"
     volumes:
       - ./es_data:/usr/share/elasticsearch/data
 
